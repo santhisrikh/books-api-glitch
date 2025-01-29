@@ -68,11 +68,15 @@ app.get("/books", (req, res) => {
   }
 
   // Pagination
-  const page = parseInt(req.query.page) || 1; // Default page = 1
-  const limit = parseInt(req.query.limit) || 5; // Default limit = 5
+  const page = parseInt(req.query.page);
+  const limit = parseInt(req.query.limit);
+  
+  if (!page || !limit) {
+    return res.json({ totalBooks: result.length, books: result });
+  }
+
   const startIndex = (page - 1) * limit;
   const endIndex = page * limit;
-
   const paginatedResult = result.slice(startIndex, endIndex);
 
   res.json({
@@ -82,6 +86,7 @@ app.get("/books", (req, res) => {
     books: paginatedResult
   });
 });
+
 
 // Get a single book
 app.get("/books/:id", (req, res) => {
