@@ -1,119 +1,117 @@
-/**
- * This is the main Node.js server script for your project
- * Check out the two endpoints this back-end API provides in fastify.get and fastify.post below
- */
+const express = require("express");
+const crypto = require("crypto");
 
-const path = require("path");
+const cors = require("cors");
+const app = express();
 
-// Require the fastify framework and instantiate it
-const fastify = require("fastify")({
-  // Set this to true for detailed logging:
-  logger: false,
-});
+app.use(express.json());
+app.use(cors());
 
-// ADD FAVORITES ARRAY VARIABLE FROM TODO HERE
+const users = [
+  { username: "admin", password: "password123" },
+  { username: "user", password: "user123" },
+];
 
-// Setup our static files
-fastify.register(require("@fastify/static"), {
-  root: path.join(__dirname, "public"),
-  prefix: "/", // optional: default '/'
-});
+let books = [
+  { id: 1, name: "The Great Gatsby", category: "Fiction", price: 299 },
+  { id: 2, name: "Atomic Habits", category: "Self-Help", price: 399 },
+  { id: 3, name: "The Alchemist", category: "Fiction", price: 349 },
+  { id: 4, name: "Deep Work", category: "Productivity", price: 499 },
+  { id: 5, name: "The Pragmatic Programmer", category: "Technology", price: 599 },
+  { id: 6, name: "Clean Code", category: "Technology", price: 799 },
+  { id: 7, name: "Sapiens", category: "History", price: 699 },
+  { id: 8, name: "Rich Dad Poor Dad", category: "Finance", price: 349 },
+  { id: 9, name: "1984", category: "Fiction", price: 399 },
+  { id: 10, name: "Zero to One", category: "Business", price: 499 },
+  { id: 11, name: "Hooked", category: "Psychology", price: 299 },
+  { id: 12, name: "The Lean Startup", category: "Business", price: 450 }
+];
 
-// Formbody lets us parse incoming forms
-fastify.register(require("@fastify/formbody"));
+// Generate a random token
+const generateToken = () => {
+  return crypto.randomBytes(16).toString("hex");
+};
 
-// View is a templating manager for fastify
-fastify.register(require("@fastify/view"), {
-  engine: {
-    handlebars: require("handlebars"),
-  },
-});
+// Login API
+app.post("/login", (req, res) => {
+  const { username, password } = req.body;
+  const user = users.find(
+    (u) => u.username === username && u.password === password
+  );
 
-// Load and parse SEO data
-const seo = require("./src/seo.json");
-if (seo.url === "glitch-default") {
-  seo.url = `https://${process.env.PROJECT_DOMAIN}.glitch.me`;
-}
-
-/**
- * Our home page route
- *
- * Returns src/pages/index.hbs with data built into it
- */
-fastify.get("/", function (request, reply) {
-  // params is an object we'll pass to our handlebars template
-  let params = { seo: seo };
-
-  // If someone clicked the option for a random color it'll be passed in the querystring
-  if (request.query.randomize) {
-    // We need to load our color data file, pick one at random, and add it to the params
-    const colors = require("./src/colors.json");
-    const allColors = Object.keys(colors);
-    let currentColor = allColors[(allColors.length * Math.random()) << 0];
-
-    // Add the color properties to the params object
-    params = {
-      color: colors[currentColor],
-      colorError: null,
-      seo: seo,
-    };
+  if (user) {
+    const token = generateToken();
+    res.json({ success: true, token });
+  } else {
+    res.status(401).json({ success: false, message: "Invalid credentials" });
   }
-
-  // The Handlebars code will be able to access the parameter values and build them into the page
-  return reply.view("/src/pages/index.hbs", params);
 });
 
-/**
- * Our POST route to handle and react to form submissions
- *
- * Accepts body data indicating the user choice
- */
-fastify.post("/", function (request, reply) {
-  // Build the params object to pass to the template
-  let params = { seo: seo };
+// Get books with sorting, filtering, and pagination
+app.get("/books", (req, res) => {
+  let result = [...books];
 
-  // If the user submitted a color through the form it'll be passed here in the request body
-  let color = request.body.color;
-
-  // If it's not empty, let's try to find the color
-  if (color) {
-    // ADD CODE FROM TODO HERE TO SAVE SUBMITTED FAVORITES
-
-    // Load our color data file
-    const colors = require("./src/colors.json");
-
-    // Take our form submission, remove whitespace, and convert to lowercase
-    color = color.toLowerCase().replace(/\s/g, "");
-
-    // Now we see if that color is a key in our colors object
-    if (colors[color]) {
-      // Found one!
-      params = {
-        color: colors[color],
-        colorError: null,
-        seo: seo,
-      };
-    } else {
-      // No luck! Return the user value as the error property
-      params = {
-        colorError: request.body.color,
-        seo: seo,
-      };
+  // Sorting
+  if (req.query.sort) {
+    if (req.query.sort === "name_asc") {
+      result.sort((a, b) => a.name.localeCompare(b.name));
+    } else if (req.query.sort === "price_asc") {
+      result.sort((a, b) => a.price - b.price);
+    } else if (req.query.sort === "price_desc") {
+      result.sort((a, b) => b.price - a.price);
     }
   }
 
-  // The Handlebars template will use the parameter values to update the page with the chosen color
-  return reply.view("/src/pages/index.hbs", params);
+  // Filtering
+  if (req.query.category) {
+    result = result.filter(book => book.category.toLowerCase() === req.query.category.toLowerCase());
+  }
+
+  // Pagination
+  const page = parseInt(req.query.page) || 1; // Default page = 1
+  const limit = parseInt(req.query.limit) || 5; // Default limit = 5
+  const startIndex = (page - 1) * limit;
+  const endIndex = page * limit;
+
+  const paginatedResult = result.slice(startIndex, endIndex);
+
+  res.json({
+    totalBooks: result.length,
+    totalPages: Math.ceil(result.length / limit),
+    currentPage: page,
+    books: paginatedResult
+  });
 });
 
-// Run the server and report out to the logs
-fastify.listen(
-  { port: process.env.PORT, host: "0.0.0.0" },
-  function (err, address) {
-    if (err) {
-      console.error(err);
-      process.exit(1);
-    }
-    console.log(`Your app is listening on ${address}`);
+// Get a single book
+app.get("/books/:id", (req, res) => {
+  const book = books.find(b => b.id === parseInt(req.params.id));
+  book ? res.json(book) : res.status(404).json({ message: "Book not found" });
+});
+
+// Add a book
+app.post("/books", (req, res) => {
+  const newBook = { id: books.length + 1, ...req.body };
+  books.push(newBook);
+  res.status(201).json(newBook);
+});
+
+// Update a book
+app.put("/books/:id", (req, res) => {
+  const index = books.findIndex(b => b.id === parseInt(req.params.id));
+  if (index !== -1) {
+    books[index] = { ...books[index], ...req.body };
+    res.json(books[index]);
+  } else {
+    res.status(404).json({ message: "Book not found" });
   }
-);
+});
+
+// Delete a book
+app.delete("/books/:id", (req, res) => {
+  books = books.filter(b => b.id !== parseInt(req.params.id));
+  res.json({ message: "Book deleted successfully" });
+});
+
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
